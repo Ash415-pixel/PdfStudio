@@ -99,6 +99,7 @@ def build_layout_pdf(
     output_size_mm: tuple,  # (width_mm, height_mm)
     cols: int,
     rows: int,
+    copies: int,
     margin_mm: float,
     gutter_mm: float,
     maintain_ar: bool,
@@ -107,8 +108,8 @@ def build_layout_pdf(
     orientation: str,
 ) -> bytes:
     """
-    Build a new PDF with `cols × rows` copies of the cropped region,
-    arranged on a single output page.
+    Build a new PDF with `copies` copies of the cropped region arranged in a
+    `cols × rows` grid on a single output page. Cells beyond `copies` are left blank.
     Returns the PDF as bytes.
     """
     page_w_mm, page_h_mm = output_size_mm
@@ -168,35 +169,37 @@ def build_layout_pdf(
 
     for row in range(rows):
         for col in range(cols):
+            cell_index = row * cols + col
             cell_x = margin_pt + col * (cell_w_pt + gutter_pt)
             # ReportLab Y origin is bottom-left
             cell_y = page_h_pt - margin_pt - (row + 1) * cell_h_pt - row * gutter_pt
 
-            draw_x, draw_y = cell_x, cell_y
-            draw_w, draw_h = cell_w_pt, cell_h_pt
+            if cell_index < copies:
+                draw_x, draw_y = cell_x, cell_y
+                draw_w, draw_h = cell_w_pt, cell_h_pt
 
-            if maintain_ar:
-                cell_ar = cell_w_pt / cell_h_pt if cell_h_pt > 0 else 1.0
-                if crop_ar > cell_ar:
-                    draw_w = cell_w_pt
-                    draw_h = cell_w_pt / crop_ar
-                else:
-                    draw_h = cell_h_pt
-                    draw_w = cell_h_pt * crop_ar
-                if center_items:
-                    draw_x = cell_x + (cell_w_pt - draw_w) / 2
-                    draw_y = cell_y + (cell_h_pt - draw_h) / 2
+                if maintain_ar:
+                    cell_ar = cell_w_pt / cell_h_pt if cell_h_pt > 0 else 1.0
+                    if crop_ar > cell_ar:
+                        draw_w = cell_w_pt
+                        draw_h = cell_w_pt / crop_ar
+                    else:
+                        draw_h = cell_h_pt
+                        draw_w = cell_h_pt * crop_ar
+                    if center_items:
+                        draw_x = cell_x + (cell_w_pt - draw_w) / 2
+                        draw_y = cell_y + (cell_h_pt - draw_h) / 2
 
-            # Draw the cropped image
-            c.drawImage(
-                tmp_img.name,
-                draw_x, draw_y,
-                width=draw_w, height=draw_h,
-                preserveAspectRatio=False,
-                mask="auto"
-            )
+                # Draw the cropped image
+                c.drawImage(
+                    tmp_img.name,
+                    draw_x, draw_y,
+                    width=draw_w, height=draw_h,
+                    preserveAspectRatio=False,
+                    mask="auto"
+                )
 
-            # Cut lines
+            # Cut lines (drawn for all cells regardless of copies)
             if cut_lines:
                 c.setStrokeColorRGB(0.5, 0.5, 0.5)
                 c.setLineWidth(0.4)
@@ -357,6 +360,7 @@ def api_export():
         session_id, page,
         crop_mm: {x, y, w, h},
         layout: {cols, rows},
+        copies: int (optional, defaults to cols*rows),
         output_size: "A4"|"A3"|"Letter"|"A5",
         orientation: "portrait"|"landscape",
         margin_mm, gutter_mm,
@@ -383,6 +387,7 @@ def api_export():
 
         cols = int(layout["cols"])
         rows = int(layout["rows"])
+        copies = max(1, min(cols * rows, int(data.get("copies", cols * rows))))
 
         pg_info = sess["pages_info"][page - 1]
         pg_h_mm = pg_info["height_mm"]
@@ -404,6 +409,7 @@ def api_export():
             output_size_mm=output_size_mm,
             cols=cols,
             rows=rows,
+            copies=copies,
             margin_mm=margin_mm,
             gutter_mm=gutter_mm,
             maintain_ar=maintain_ar,
@@ -412,7 +418,7 @@ def api_export():
             orientation=orientation,
         )
 
-        log.info(f"Exported PDF [{sid}]: {cols}×{rows} on {output_size} {orientation}")
+        log.info(f"Exported PDF [{sid}]: {copies} of {cols}×{rows} on {output_size} {orientation}")
         return send_file(
             io.BytesIO(pdf_bytes),
             mimetype="application/pdf",

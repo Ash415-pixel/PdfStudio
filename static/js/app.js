@@ -677,6 +677,12 @@ const Layout = {
   _getConfig() {
     const cols     = Math.max(1, Math.min(8, parseInt(document.getElementById("lay-cols").value) || 2));
     const rows     = Math.max(1, Math.min(8, parseInt(document.getElementById("lay-rows").value) || 2));
+    const maxCopies = cols * rows;
+    const copiesEl = document.getElementById("lay-copies");
+    copiesEl.max = maxCopies;
+    if (parseInt(copiesEl.value) > maxCopies) copiesEl.value = maxCopies;
+    document.getElementById("copies-hint").textContent = `(1–${maxCopies})`;
+    const copies   = Math.max(1, Math.min(maxCopies, parseInt(copiesEl.value) || maxCopies));
     const outKey   = document.getElementById("out-size").value;
     const marginMm = parseFloat(document.getElementById("lay-margin").value) || 5;
     const gutterMm = parseFloat(document.getElementById("lay-gutter").value) || 3;
@@ -687,7 +693,7 @@ const Layout = {
     let { w: pgW, h: pgH } = PAGE_SIZES_MM[outKey] || PAGE_SIZES_MM.A4;
     if (state.orientation === "landscape") [pgW, pgH] = [pgH, pgW];
 
-    return { cols, rows, pgW, pgH, marginMm, gutterMm, maintainAr, centerItems, cutLines };
+    return { cols, rows, copies, pgW, pgH, marginMm, gutterMm, maintainAr, centerItems, cutLines };
   },
 
   update() {
@@ -698,7 +704,7 @@ const Layout = {
   },
 
   _renderPreview(cfg) {
-    const { cols, rows, pgW, pgH, marginMm, gutterMm, maintainAr, centerItems, cutLines } = cfg;
+    const { cols, rows, copies, pgW, pgH, marginMm, gutterMm, maintainAr, centerItems, cutLines } = cfg;
 
     // Scale sheet to fit viewport (~500px tall)
     const PREVIEW_H = 500;
@@ -713,7 +719,7 @@ const Layout = {
     document.getElementById("sheet-meta").textContent =
       `${document.getElementById("out-size").value} · ${pgW.toFixed(0)} × ${pgH.toFixed(0)} mm · ${state.orientation}`;
 
-    document.getElementById("copy-badge").textContent = `${cols * rows} cop${cols * rows === 1 ? "y" : "ies"}`;
+    document.getElementById("copy-badge").textContent = `${copies} cop${copies === 1 ? "y" : "ies"}`;
 
     const totalGW  = gutterMm * (cols - 1);
     const totalGH  = gutterMm * (rows - 1);
@@ -723,6 +729,7 @@ const Layout = {
 
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
+        const cellIndex = r * cols + c;
         const cellX = (marginMm + c * (cellWmm + gutterMm)) * scl;
         const cellY = (marginMm + r * (cellHmm + gutterMm)) * scl;
         const cellW = cellWmm * scl;
@@ -733,44 +740,46 @@ const Layout = {
         Object.assign(cell.style, {
           left: cellX + "px", top: cellY + "px",
           width: cellW + "px", height: cellH + "px",
-          background: "#f0f0f0",
+          background: cellIndex < copies ? "#f0f0f0" : "#ffffff",
           border: cutLines ? "1px dashed rgba(100,100,100,0.4)" : "1px solid rgba(0,0,0,0.06)",
         });
 
-        // Draw crop preview image in cell
-        let imgX = 0, imgY = 0, imgW = cellW, imgH = cellH;
-        if (maintainAr) {
-          const cAR = cellW / cellH;
-          if (cropAR > cAR) { imgW = cellW; imgH = cellW / cropAR; }
-          else { imgH = cellH; imgW = cellH * cropAR; }
-          if (centerItems) { imgX = (cellW - imgW) / 2; imgY = (cellH - imgH) / 2; }
+        if (cellIndex < copies) {
+          // Draw crop preview image in cell
+          let imgX = 0, imgY = 0, imgW = cellW, imgH = cellH;
+          if (maintainAr) {
+            const cAR = cellW / cellH;
+            if (cropAR > cAR) { imgW = cellW; imgH = cellW / cropAR; }
+            else { imgH = cellH; imgW = cellH * cropAR; }
+            if (centerItems) { imgX = (cellW - imgW) / 2; imgY = (cellH - imgH) / 2; }
+          }
+
+          const img = document.createElement("img");
+          const cmm = state.cropMm;
+          img.src = `/api/crop-preview-img/${state.sessionId}/${state.currentPage}?x=${cmm.x}&y=${cmm.y}&w=${cmm.w}&h=${cmm.h}&t=${Date.now()}`;
+          Object.assign(img.style, {
+            position: "absolute",
+            left: imgX + "px", top: imgY + "px",
+            width: imgW + "px", height: imgH + "px",
+            objectFit: "fill",
+          });
+          cell.appendChild(img);
         }
 
-        const img = document.createElement("img");
-        // Use the crop preview endpoint with crop params
-        const cmm = state.cropMm;
-        img.src = `/api/crop-preview-img/${state.sessionId}/${state.currentPage}?x=${cmm.x}&y=${cmm.y}&w=${cmm.w}&h=${cmm.h}&t=${Date.now()}`;
-        Object.assign(img.style, {
-          position: "absolute",
-          left: imgX + "px", top: imgY + "px",
-          width: imgW + "px", height: imgH + "px",
-          objectFit: "fill",
-        });
-        cell.appendChild(img);
         sheet.appendChild(cell);
       }
     }
   },
 
   _updateSummary(cfg) {
-    const { cols, rows, pgW, pgH, marginMm, gutterMm } = cfg;
+    const { cols, rows, copies, pgW, pgH, marginMm, gutterMm } = cfg;
     const totalGW = gutterMm * (cols - 1);
     const totalGH = gutterMm * (rows - 1);
     const cellW   = ((pgW - 2 * marginMm - totalGW) / cols).toFixed(1);
     const cellH   = ((pgH - 2 * marginMm - totalGH) / rows).toFixed(1);
 
     document.getElementById("layout-summary").innerHTML = `
-      Copies: <strong>${cols * rows}</strong><br>
+      Copies: <strong>${copies}</strong> of <strong>${cols * rows}</strong><br>
       Grid: <strong>${cols} col × ${rows} row</strong><br>
       Cell size: <strong>${cellW} × ${cellH} mm</strong><br>
       Page: <strong>${pgW.toFixed(0)} × ${pgH.toFixed(0)} mm</strong><br>
@@ -778,7 +787,7 @@ const Layout = {
     `;
 
     document.getElementById("layout-ctb-info").textContent =
-      `${cols} × ${rows} grid · ${cols * rows} copies · ${pgW.toFixed(0)} × ${pgH.toFixed(0)} mm`;
+      `${cols} × ${rows} grid · ${copies} of ${cols * rows} cop${copies === 1 ? "y" : "ies"} · ${pgW.toFixed(0)} × ${pgH.toFixed(0)} mm`;
   },
 
   async export() {
@@ -797,6 +806,7 @@ const Layout = {
       page:        state.currentPage,
       crop_mm:     state.cropMm,
       layout:      { cols: cfg.cols, rows: cfg.rows },
+      copies:      cfg.copies,
       output_size: document.getElementById("out-size").value,
       orientation: state.orientation,
       margin_mm:   cfg.marginMm,

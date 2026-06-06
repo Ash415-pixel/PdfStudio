@@ -227,6 +227,10 @@
             <input class="ctrl-input" type="number" id="lay-rows" min="1" max="8" value="2" oninput="Layout.update()">
           </div>
         </div>
+        <div class="field" style="margin-top:8px">
+          <label class="field-label">Copies <span id="copies-hint" style="font-weight:400;color:var(--text-muted)">(1–4)</span></label>
+          <input class="ctrl-input" type="number" id="lay-copies" min="1" max="4" value="4" oninput="Layout.update()">
+        </div>
         <!-- Quick layout presets -->
         <div class="sb-label" style="margin-top:12px">Quick Layouts</div>
         <div class="layout-preset-grid" id="layout-preset-grid"></div>
