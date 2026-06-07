@@ -759,3 +759,113 @@ input[type=range] {
   display: inline-block;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── TRANSACTIONS PANEL (Step 1 right-side panel) ───────── */
+.txn-panel {
+  width: 480px;
+  flex-shrink: 0;
+  background: var(--panel-bg);
+  border-left: 1px solid var(--rule);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.txn-panel-header {
+  padding: 14px 18px 12px;
+  border-bottom: 1px solid var(--rule);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+.txn-panel-title {
+  font-family: 'DM Mono', monospace;
+  font-size: 0.63rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.txn-table-wrap {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: auto;
+}
+.txn-empty {
+  padding: 32px 18px;
+  font-size: 0.8rem;
+  color: var(--muted);
+  text-align: center;
+}
+.txn-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+}
+.txn-th {
+  padding: 8px 12px;
+  text-align: left;
+  font-family: 'DM Mono', monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: var(--cream);
+  border-bottom: 1px solid var(--rule);
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.txn-td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--rule);
+  vertical-align: top;
+  color: var(--ink);
+  max-width: 160px;
+  word-break: break-word;
+}
+.txn-td.txn-ts {
+  font-family: 'DM Mono', monospace;
+  font-size: 0.68rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.txn-table tbody tr:hover .txn-td { background: var(--cream); }
+.txn-td-action { width: 32px; padding: 4px 6px; text-align: center; }
+.txn-del-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.75rem;
+  padding: 3px 5px;
+  border-radius: var(--radius-sm);
+  line-height: 1;
+  opacity: 0;
+  transition: opacity var(--transition), color var(--transition), background var(--transition);
+}
+.txn-table tbody tr:hover .txn-del-btn { opacity: 1; }
+.txn-del-btn:hover { color: var(--accent); background: var(--accent-dim); }
+
+/* textarea inside sidebar */
+textarea.ctrl-input {
+  font-family: 'Cabinet Grotesk', sans-serif;
+  line-height: 1.4;
+}
+
+/* ── TRANSACTION NOTICE (extraction failed / no text) ────── */
+.txn-notice {
+  background: var(--accent-dim);
+  border: 1px solid rgba(200,73,10,0.25);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  font-size: 0.75rem;
+  color: var(--accent);
+  line-height: 1.45;
+}
+.txn-notice-hint {
+  display: block;
+  margin-top: 3px;
+  color: var(--ink-60);
+}

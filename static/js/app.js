@@ -150,7 +150,14 @@ const UI = {
       item.classList.toggle("done", i < n);
     });
 
-    if (n === 3) Layout.update();
+    if (n === 3) {
+      Layout.update();
+      // Auto-extract fields first time only (all three fields empty)
+      const fieldsEmpty = !document.getElementById("txn-product").value
+                       && !document.getElementById("txn-address").value
+                       && !document.getElementById("txn-price").value;
+      if (fieldsEmpty) Layout.extractFields();
+    }
   },
 };
 
@@ -790,6 +797,89 @@ const Layout = {
       `${cols} × ${rows} grid · ${copies} of ${cols * rows} cop${copies === 1 ? "y" : "ies"} · ${pgW.toFixed(0)} × ${pgH.toFixed(0)} mm`;
   },
 
+  _setTxnNotice(msg) {
+    const el = document.getElementById("txn-notice");
+    const txt = document.getElementById("txn-notice-text");
+    if (msg) {
+      txt.textContent = msg;
+      el.style.display = "block";
+    } else {
+      el.style.display = "none";
+    }
+  },
+
+  async extractFields() {
+    if (!state.sessionId) return;
+    const btn = document.getElementById("btn-extract");
+    const orig = btn.textContent;
+    btn.textContent = "…";
+    btn.disabled = true;
+    try {
+      const resp = await fetch("/api/extract-fields", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ session_id: state.sessionId, page: state.currentPage }),
+      });
+      if (!resp.ok) throw new Error(`Server error ${resp.status}`);
+      const data = await resp.json();
+      const found = data.product_details || data.customer_address || data.price_details;
+      if (found) {
+        if (data.product_details)  document.getElementById("txn-product").value = data.product_details;
+        if (data.customer_address) document.getElementById("txn-address").value  = data.customer_address;
+        if (data.price_details)    document.getElementById("txn-price").value    = data.price_details;
+        this._setTxnNotice(null);
+        toast("Fields extracted — review and edit as needed", "success");
+      } else {
+        this._setTxnNotice("No extractable text found in this PDF.");
+      }
+    } catch (e) {
+      // Never block the user — just show the notice
+      this._setTxnNotice("Auto-extraction unavailable.");
+    } finally {
+      btn.textContent = orig;
+      btn.disabled = false;
+    }
+  },
+
+  async saveLogEntry() {
+    const product = document.getElementById("txn-product").value.trim();
+    const address = document.getElementById("txn-address").value.trim();
+    const price   = document.getElementById("txn-price").value.trim();
+    if (!product && !address && !price) {
+      toast("Fill in at least one field before saving", "error"); return;
+    }
+    const btn = document.getElementById("btn-save-log");
+    btn.disabled = true;
+    btn.textContent = "Saving…";
+    try {
+      const cfg = this._getConfig();
+      const resp = await fetch("/api/transactions", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filename:         state.filename || "",
+          page:             state.currentPage,
+          product_details:  product,
+          customer_address: address,
+          price_details:    price,
+          grid_cols:        cfg.cols,
+          grid_rows:        cfg.rows,
+          copies:           cfg.copies,
+          output_size:      document.getElementById("out-size").value,
+          orientation:      state.orientation,
+        }),
+      });
+      if (!resp.ok) throw new Error((await resp.json()).error || resp.statusText);
+      toast("Log entry saved", "success");
+      Transactions.refresh();
+    } catch (e) {
+      toast("Save failed: " + e.message, "error");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "✎ Save Log Entry";
+    }
+  },
+
   async export() {
     if (!state.sessionId || !state.cropMm) {
       toast("No crop region selected", "error"); return;
@@ -814,21 +904,38 @@ const Layout = {
       maintain_ar: cfg.maintainAr,
       center_items: cfg.centerItems,
       cut_lines:   cfg.cutLines,
+      transaction: {
+        product_details:  document.getElementById("txn-product").value.trim(),
+        customer_address: document.getElementById("txn-address").value.trim(),
+        price_details:    document.getElementById("txn-price").value.trim(),
+      },
     };
 
+    console.log("[EXPORT] payload →", JSON.stringify(payload, null, 2));
+
     try {
+      console.log("[EXPORT] sending POST /api/export …");
       const resp = await fetch("/api/export", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify(payload),
       });
 
+      console.log(`[EXPORT] response status: ${resp.status} ${resp.statusText}`);
+      console.log("[EXPORT] content-type:", resp.headers.get("content-type"));
+
       if (!resp.ok) {
-        const err = await resp.json();
-        throw new Error(err.error || resp.statusText);
+        let errMsg = resp.statusText;
+        try { errMsg = (await resp.json()).error || errMsg; } catch (_) {}
+        console.error("[EXPORT] server error:", errMsg);
+        throw new Error(errMsg);
       }
 
       const blob = await resp.blob();
+      console.log(`[EXPORT] received blob — size=${blob.size} type=${blob.type}`);
+
+      if (blob.size === 0) throw new Error("Server returned empty file");
+
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement("a");
       a.href     = url;
@@ -836,8 +943,10 @@ const Layout = {
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 5000);
       toast("PDF exported successfully!", "success");
+      Transactions.refresh();
 
     } catch (e) {
+      console.error("[EXPORT] failed:", e);
       toast("Export failed: " + e.message, "error");
     } finally {
       btn.disabled = false;
@@ -881,7 +990,81 @@ window.addEventListener("beforeunload", () => {
   }
 });
 
+// ─── TRANSACTIONS MODULE ──────────────────────────────────────────────────────
+
+const Transactions = {
+  async refresh() {
+    const wrap = document.getElementById("txn-table-wrap");
+    wrap.innerHTML = `<p class="txn-empty">Loading…</p>`;
+    try {
+      const resp = await fetch("/api/transactions");
+      if (!resp.ok) throw new Error(resp.statusText);
+      const rows = await resp.json();
+      this._render(rows);
+    } catch (e) {
+      wrap.innerHTML = `<p class="txn-empty">Failed to load transactions.</p>`;
+    }
+  },
+
+  _render(rows) {
+    const wrap = document.getElementById("txn-table-wrap");
+    if (!rows.length) {
+      wrap.innerHTML = `<p class="txn-empty">No transactions yet.</p>`;
+      return;
+    }
+    const tbody = rows.map(r => `
+      <tr id="txn-row-${r.id}">
+        <td class="txn-td txn-ts">${r.timestamp}</td>
+        <td class="txn-td">${r.filename || '—'}</td>
+        <td class="txn-td">${r.product_details || '—'}</td>
+        <td class="txn-td">${r.customer_address || '—'}</td>
+        <td class="txn-td">${r.price_details || '—'}</td>
+        <td class="txn-td" style="white-space:nowrap">${r.grid_cols}×${r.grid_rows}, ${r.copies} cop${r.copies === 1 ? 'y' : 'ies'}</td>
+        <td class="txn-td" style="white-space:nowrap">${r.output_size} ${r.orientation}</td>
+        <td class="txn-td txn-td-action">
+          <button class="txn-del-btn" title="Delete" onclick="Transactions.deleteTransaction(${r.id})">✕</button>
+        </td>
+      </tr>`).join("");
+    wrap.innerHTML = `
+      <table class="txn-table">
+        <thead>
+          <tr>
+            <th class="txn-th">Timestamp</th>
+            <th class="txn-th">File</th>
+            <th class="txn-th">Product</th>
+            <th class="txn-th">Customer</th>
+            <th class="txn-th">Price</th>
+            <th class="txn-th">Grid</th>
+            <th class="txn-th">Output</th>
+            <th class="txn-th"></th>
+          </tr>
+        </thead>
+        <tbody>${tbody}</tbody>
+      </table>`;
+  },
+
+  async deleteTransaction(id) {
+    const row = document.getElementById(`txn-row-${id}`);
+    if (row) row.style.opacity = "0.4";
+    try {
+      const resp = await fetch(`/api/transactions/${id}`, { method: "DELETE" });
+      if (!resp.ok) throw new Error((await resp.json()).error || resp.statusText);
+      if (row) row.remove();
+      // Show empty state if table is now empty
+      const tbody = document.querySelector("#txn-table-wrap tbody");
+      if (tbody && !tbody.children.length) {
+        document.getElementById("txn-table-wrap").innerHTML =
+          `<p class="txn-empty">No transactions yet.</p>`;
+      }
+    } catch (e) {
+      if (row) row.style.opacity = "1";
+      toast("Delete failed: " + e.message, "error");
+    }
+  },
+};
+
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 
 Crop.init();
 Layout.init();
+Transactions.refresh();

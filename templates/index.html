@@ -45,7 +45,7 @@
 <main class="app-body">
 
   <!-- ══════════════════ STEP 1: UPLOAD ══════════════════ -->
-  <section class="panel active" id="panel-1">
+  <section class="panel active" id="panel-1" style="flex-direction:row">
     <div class="upload-center">
       <div class="upload-card">
         <div class="upload-hero">
@@ -97,6 +97,17 @@
             </div>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- Transactions panel -->
+    <div class="txn-panel" id="txn-panel">
+      <div class="txn-panel-header">
+        <span class="txn-panel-title">Transaction History</span>
+        <button class="btn-ghost sm" onclick="Transactions.refresh()">↻ Refresh</button>
+      </div>
+      <div class="txn-table-wrap" id="txn-table-wrap">
+        <p class="txn-empty">No transactions yet.</p>
       </div>
     </div>
   </section>
@@ -287,6 +298,36 @@
       <div class="sb-section">
         <div class="sb-label">Output Summary</div>
         <div class="layout-summary" id="layout-summary"></div>
+      </div>
+
+      <!-- Transaction Details -->
+      <div class="sb-section">
+        <div class="sb-label" style="display:flex;justify-content:space-between;align-items:center">
+          Transaction Details
+          <button class="btn-ghost sm" id="btn-extract" onclick="Layout.extractFields()">Extract ↓</button>
+        </div>
+
+        <!-- Notice shown when extraction fails or finds nothing -->
+        <div id="txn-notice" class="txn-notice" style="display:none">
+          <span id="txn-notice-text"></span>
+          <span class="txn-notice-hint">Fill in the fields below and click <strong>Save Log Entry</strong> to record manually.</span>
+        </div>
+
+        <div class="field">
+          <label class="field-label">Product Details</label>
+          <textarea class="ctrl-input" id="txn-product" rows="2" placeholder="Enter manually or use Extract ↓" style="resize:vertical;min-height:52px"></textarea>
+        </div>
+        <div class="field" style="margin-top:6px">
+          <label class="field-label">Customer Address</label>
+          <textarea class="ctrl-input" id="txn-address" rows="2" placeholder="Enter manually or use Extract ↓" style="resize:vertical;min-height:52px"></textarea>
+        </div>
+        <div class="field" style="margin-top:6px">
+          <label class="field-label">Price Details</label>
+          <input class="ctrl-input" type="text" id="txn-price" placeholder="e.g. $49.99 or Total: $120">
+        </div>
+        <button class="btn-ghost sm full" id="btn-save-log" onclick="Layout.saveLogEntry()" style="margin-top:10px">
+          ✎ Save Log Entry
+        </button>
       </div>
 
       <div class="sb-spacer"></div>
